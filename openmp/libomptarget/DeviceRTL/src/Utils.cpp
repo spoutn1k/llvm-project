@@ -79,6 +79,24 @@ uint64_t Pack(uint32_t LowBits, uint32_t HighBits) {
 #pragma omp end declare variant
 ///}
 
+/// Intel Implementation
+///
+///{
+#pragma omp begin declare variant match(device = {arch(spir64)})
+
+void Unpack(uint64_t Val, uint32_t *LowBits, uint32_t *HighBits) {
+  static_assert(sizeof(unsigned long) == 8, "");
+  *LowBits = (uint32_t)(Val & 0x00000000FFFFFFFFUL);
+  *HighBits = (uint32_t)((Val & 0xFFFFFFFF00000000UL) >> 32);
+}
+
+uint64_t Pack(uint32_t LowBits, uint32_t HighBits) {
+  return (((uint64_t)HighBits) << 32) | (uint64_t)LowBits;
+}
+
+#pragma omp end declare variant
+///}
+
 int32_t shuffle(uint64_t Mask, int32_t Var, int32_t SrcLane);
 int32_t shuffleDown(uint64_t Mask, int32_t Var, uint32_t LaneDelta,
                     int32_t Width);
@@ -103,8 +121,9 @@ int32_t shuffleDown(uint64_t Mask, int32_t Var, uint32_t LaneDelta,
   return __builtin_amdgcn_ds_bpermute(Index << 2, Var);
 }
 
-bool isSharedMemPtr(const void * Ptr) {
-  return __builtin_amdgcn_is_shared((const __attribute__((address_space(0))) void *)Ptr);
+bool isSharedMemPtr(const void *Ptr) {
+  return __builtin_amdgcn_is_shared(
+      (const __attribute__((address_space(0))) void *)Ptr);
 }
 #pragma omp end declare variant
 ///}
@@ -125,6 +144,27 @@ int32_t shuffleDown(uint64_t Mask, int32_t Var, uint32_t Delta, int32_t Width) {
 }
 
 bool isSharedMemPtr(const void *Ptr) { return __nvvm_isspacep_shared(Ptr); }
+
+#pragma omp end declare variant
+///}
+
+/// Intel Implementation
+///
+///{
+#pragma omp begin declare variant match(device = {arch(spir64)})
+
+int32_t shuffle(uint64_t Mask, int32_t Var, int32_t SrcLane) { // TODO
+  __builtin_trap();
+}
+
+int32_t shuffleDown(uint64_t Mask, int32_t Var, uint32_t Delta,
+                    int32_t Width) { // TODO
+  __builtin_trap();
+}
+
+bool isSharedMemPtr(const void *Ptr) { // TODO
+  __builtin_trap();
+}
 
 #pragma omp end declare variant
 ///}

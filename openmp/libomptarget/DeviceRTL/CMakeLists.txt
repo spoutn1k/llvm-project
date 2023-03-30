@@ -281,6 +281,10 @@ foreach(gpu_arch ${LIBOMPTARGET_DEVICE_ARCHITECTURES})
   endif()
 endforeach()
 
+add_custom_target(omptarget.devicertl.spir64)
+# TODO Adapt names/versions here
+compileDeviceRTLLibrary(spir64 spir64 spir64-intel-l0 -fopenmp-targets=spir64)
+
 # Archive all the object files generated above into a static library
 add_library(omptarget.devicertl STATIC)
 set_target_properties(omptarget.devicertl PROPERTIES LINKER_LANGUAGE CXX)

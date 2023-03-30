@@ -66,6 +66,23 @@ void free(void *Ptr) {}
 #pragma omp end declare variant
 ///}
 
+/// Intel implementations of the shuffle sync idiom.
+///
+///{
+#pragma omp begin declare variant match(device = {arch(spir64)})
+
+extern "C" {
+void *malloc(uint64_t Size) {
+  // TODO: Use some preallocated space for dynamic malloc.
+  return nullptr;
+}
+
+void free(void *Ptr) {}
+}
+
+#pragma omp end declare variant
+///}
+
 /// A "smart" stack in shared memory.
 ///
 /// The stack exposes a malloc/free interface but works like a stack internally.

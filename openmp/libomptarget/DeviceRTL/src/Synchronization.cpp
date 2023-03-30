@@ -372,6 +372,138 @@ void setLock(omp_lock_t *Lock) {
 #pragma omp end declare variant
 ///}
 
+/// Intel Implementation
+///
+///{
+#pragma omp begin declare variant match(device = {arch(spir64)})
+
+extern int __spirv_AtomicIAdd(int *, int, int, int);
+extern void __spirv_MemoryBarrier(int, int);
+extern void __spirv_ControlBarrier(int, int, int);
+
+typedef enum {
+  CrossDevice = 0,
+  Device = 1,
+  Workgroup = 2,
+  Subgroup = 3,
+  Invocation = 4
+} Scope_t;
+
+typedef enum {
+  Relaxed = 0x0,
+  Acquire = 0x2,
+  Release = 0x4,
+  AcquireRelease = 0x8,
+  SequentiallyConsistent = 0x10,
+  UniformMemory = 0x40,
+  SubgroupMemory = 0x80,
+  WorkgroupMemory = 0x100,
+  CrossWorkgroupMemory = 0x200,
+  AtomicCounterMemory = 0x400,
+  ImageMemory = 0x800
+} MemorySemantics_t;
+
+uint32_t atomicInc(uint32_t *uA, uint32_t V, atomic::OrderingTy Ordering) {
+  int *A = (int *)A;
+  switch (Ordering) {
+  default:
+    __builtin_unreachable();
+  case atomic::relaxed:
+    return __spirv_AtomicIAdd(A, Scope_t::Device, MemorySemantics_t::Relaxed,
+                              V);
+  case atomic::aquire:
+    return __spirv_AtomicIAdd(A, Scope_t::Device, MemorySemantics_t::Acquire,
+                              V);
+  case atomic::release:
+    return __spirv_AtomicIAdd(A, Scope_t::Device, MemorySemantics_t::Release,
+                              V);
+  case atomic::acq_rel:
+    return __spirv_AtomicIAdd(A, Scope_t::Device,
+                              MemorySemantics_t::AcquireRelease, V);
+  case atomic::seq_cst:
+    return __spirv_AtomicIAdd(A, Scope_t::Device,
+                              MemorySemantics_t::SequentiallyConsistent, V);
+  }
+}
+
+void namedBarrierInit() { __builtin_trap(); } // TODO
+
+void namedBarrier() { __builtin_trap(); } // TODO
+
+void fenceTeam(atomic::OrderingTy Ordering) {
+  switch (Ordering) {
+  default:
+    __builtin_unreachable();
+  case atomic::aquire:
+    return __spirv_MemoryBarrier(Scope_t::Workgroup,
+                                 MemorySemantics_t::Acquire);
+  case atomic::release:
+    return __spirv_MemoryBarrier(Scope_t::Workgroup,
+                                 MemorySemantics_t::Release);
+  case atomic::acq_rel:
+    return __spirv_MemoryBarrier(Scope_t::Workgroup,
+                                 MemorySemantics_t::AcquireRelease);
+  case atomic::seq_cst:
+    return __spirv_MemoryBarrier(Scope_t::Workgroup,
+                                 MemorySemantics_t::SequentiallyConsistent);
+  }
+}
+void fenceKernel(atomic::OrderingTy Ordering) {
+  switch (Ordering) {
+  default:
+    __builtin_unreachable();
+  case atomic::aquire:
+    return __spirv_MemoryBarrier(Scope_t::Invocation,
+                                 MemorySemantics_t::Acquire);
+  case atomic::release:
+    return __spirv_MemoryBarrier(Scope_t::Invocation,
+                                 MemorySemantics_t::Release);
+  case atomic::acq_rel:
+    return __spirv_MemoryBarrier(Scope_t::Invocation,
+                                 MemorySemantics_t::AcquireRelease);
+  case atomic::seq_cst:
+    return __spirv_MemoryBarrier(Scope_t::Invocation,
+                                 MemorySemantics_t::SequentiallyConsistent);
+  }
+}
+void fenceSystem(atomic::OrderingTy Ordering) {
+  switch (Ordering) {
+  default:
+    __builtin_unreachable();
+  case atomic::aquire:
+    return __spirv_MemoryBarrier(Scope_t::Device, MemorySemantics_t::Acquire);
+  case atomic::release:
+    return __spirv_MemoryBarrier(Scope_t::Device, MemorySemantics_t::Release);
+  case atomic::acq_rel:
+    return __spirv_MemoryBarrier(Scope_t::Device,
+                                 MemorySemantics_t::AcquireRelease);
+  case atomic::seq_cst:
+    return __spirv_MemoryBarrier(Scope_t::Device,
+                                 MemorySemantics_t::SequentiallyConsistent);
+  }
+}
+
+void syncWarp(__kmpc_impl_lanemask_t) {
+  __spirv_ControlBarrier(Scope_t::Subgroup, Scope_t::Invocation,
+                         MemorySemantics_t::Acquire);
+}
+
+void syncThreads() {
+  __spirv_ControlBarrier(Scope_t::Workgroup, Scope_t::Invocation,
+                         MemorySemantics_t::Acquire);
+}
+
+void syncThreadsAligned() { syncThreads(); }
+
+void unsetLock(omp_lock_t *) { __builtin_trap(); }
+int testLock(omp_lock_t *) { __builtin_trap(); }
+void initLock(omp_lock_t *) { __builtin_trap(); }
+void destroyLock(omp_lock_t *) { __builtin_trap(); }
+void setLock(omp_lock_t *) { __builtin_trap(); }
+
+#pragma omp end declare variant
+///}
+
 } // namespace impl
 
 void synchronize::init(bool IsSPMD) {

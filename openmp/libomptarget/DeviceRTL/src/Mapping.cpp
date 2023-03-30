@@ -151,6 +151,65 @@ uint32_t getNumberOfWarpsInBlock() {
 #pragma omp end declare variant
 ///}
 
+/// Intel implementation
+///
+///{
+#pragma omp begin declare variant match(device = {arch(spir64)})
+
+extern size_t __spirv_BuiltInGlobalSize(int);
+extern size_t __spirv_BuiltInLocalInvocationId(int);
+extern size_t __spirv_BuiltInWorkgroupId(int);
+extern size_t __spirv_BuiltInWorkgroupSize(int);
+
+const llvm::omp::GV &getGridValue() { return llvm::omp::SPIR64GridValues64; }
+
+uint32_t getNumHardwareThreadsInBlock() {
+  return __spirv_BuiltInWorkgroupSize(0);
+}
+
+LaneMaskTy activemask() { return -1; }
+
+LaneMaskTy lanemaskLT() {
+  uint32_t Lane = mapping::getThreadIdInWarp();
+  int64_t Ballot = mapping::activemask();
+  uint64_t Mask = ((uint64_t)1 << Lane) - (uint64_t)1;
+  return Mask & Ballot;
+}
+
+LaneMaskTy lanemaskGT() {
+  uint32_t Lane = mapping::getThreadIdInWarp();
+  if (Lane == (mapping::getWarpSize() - 1))
+    return 0;
+  int64_t Ballot = mapping::activemask();
+  uint64_t Mask = (~((uint64_t)0)) << (Lane + 1);
+  return Mask & Ballot;
+}
+
+uint32_t getThreadIdInWarp() {
+  return impl::getThreadIdInBlock() & (mapping::getWarpSize() - 1);
+}
+
+uint32_t getThreadIdInBlock() { return __spirv_BuiltInLocalInvocationId(0); }
+
+uint32_t getKernelSize() { return __spirv_BuiltInGlobalSize(0); }
+
+uint32_t getBlockId() { return __spirv_BuiltInWorkgroupId(0); }
+
+uint32_t getNumberOfBlocks() {
+  return __spirv_BuiltInGlobalSize(0) / __spirv_BuiltInWorkgroupSize(0);
+}
+
+uint32_t getWarpId() {
+  return impl::getThreadIdInBlock() / mapping::getWarpSize();
+}
+
+uint32_t getNumberOfWarpsInBlock() {
+  return mapping::getBlockSize() / mapping::getWarpSize();
+}
+
+#pragma omp end declare variant
+///}
+
 uint32_t getWarpSize() { return getGridValue().GV_Warp_Size; }
 
 } // namespace impl

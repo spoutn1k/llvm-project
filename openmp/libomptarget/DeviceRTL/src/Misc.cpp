@@ -58,6 +58,18 @@ double getWTime() {
 
 #pragma omp end declare variant
 
+/// Intel implementation
+#pragma omp begin declare variant match(device = {arch(spir64)})
+
+double getWTick() { return ((double)1E-9); }
+
+double getWTime() {
+  // TODO
+  return 0;
+}
+
+#pragma omp end declare variant
+
 } // namespace impl
 } // namespace ompx
 

@@ -140,6 +140,11 @@ using LaneMaskTy = uint64_t;
 using LaneMaskTy = uint64_t;
 #pragma omp end declare variant
 
+#pragma omp begin declare variant match(device = {arch(spir64)})
+// TODO verify this
+using LaneMaskTy = uint64_t;
+#pragma omp end declare variant
+
 namespace lanes {
 enum : LaneMaskTy { All = ~(LaneMaskTy)0 };
 } // namespace lanes

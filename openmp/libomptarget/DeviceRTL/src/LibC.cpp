@@ -33,6 +33,15 @@ int32_t omp_vprintf(const char *Format, void *Arguments, uint32_t) {
 } // namespace impl
 #pragma omp end declare variant
 
+/// Intel implementation
+#pragma omp begin declare variant match(device = {arch(spir64)})
+namespace impl {
+int32_t omp_vprintf(const char *Format, void *Arguments, uint32_t) {
+  return -1;
+}
+} // namespace impl
+#pragma omp end declare variant
+
 extern "C" {
 
 int memcmp(const void *lhs, const void *rhs, size_t count) {
