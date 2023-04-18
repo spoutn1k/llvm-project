@@ -39,8 +39,46 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
   add_definitions(-DDEBUG)
 endif()
 
+if (NOT DEFINED LEVEL_ZERO_LIBRARY OR NOT DEFINED LEVEL_ZERO_INCLUDE_DIR)
+  message(STATUS "Download Level Zero loader and headers from github.com")
+
+  set(LEVEL_ZERO_LOADER_REPO "https://github.com/oneapi-src/level-zero.git")
+  set(LEVEL_ZERO_LOADER_TAG v1.8.8)
+
+  # Disable due to a bug https://github.com/oneapi-src/level-zero/issues/104
+  set(CMAKE_INCLUDE_CURRENT_DIR OFF)
+  # Prevent L0 loader from exporting extra symbols
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS OFF)
+
+  message(STATUS "Will fetch Level Zero Loader from ${LEVEL_ZERO_LOADER_REPO}")
+  include(FetchContent)
+  FetchContent_Declare(level-zero-loader
+    GIT_REPOSITORY    ${LEVEL_ZERO_LOADER_REPO}
+    GIT_TAG           ${LEVEL_ZERO_LOADER_TAG}
+  )
+
+  # Workaround warnings/errors for Level Zero build
+  set(CMAKE_CXX_FLAGS_BAK "${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-but-set-variable")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pedantic")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-stringop-truncation")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-c++98-compat-extra-semi")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unknown-warning-option")
+
+  FetchContent_MakeAvailable(level-zero-loader)
+  FetchContent_GetProperties(level-zero-loader)
+
+  # Restore original flags
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BAK}")
+
+  set(LEVEL_ZERO_LIBRARY ze_loader)
+  set(LEVEL_ZERO_INCLUDE_DIR
+    ${level-zero-loader_SOURCE_DIR}/include CACHE PATH "Path to Level Zero Headers")
+endif()
+
 set(LIBOMPTARGET_EXTRA_SOURCE)
-set(LIBOMPTARGET_DEP_LIBRARIES "ze_loader")
+set(LIBOMPTARGET_DEP_LIBRARIES ${LEVEL_ZERO_LIBRARY})
 
 if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
   # On FreeBSD, the 'environ' symbol is undefined at link time, but resolved by
