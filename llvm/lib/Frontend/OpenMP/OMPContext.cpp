@@ -51,6 +51,7 @@ OMPContext::OMPContext(bool IsDeviceCompilation, Triple TargetTriple) {
   case Triple::amdgcn:
   case Triple::nvptx:
   case Triple::nvptx64:
+  case Triple::spir64:
     ActiveTraits.set(unsigned(TraitProperty::device_kind_gpu));
     break;
   default:
