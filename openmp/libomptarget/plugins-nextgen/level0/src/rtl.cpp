@@ -25,7 +25,6 @@
 #include "GlobalHandler.h"
 #include "PluginInterface.h"
 #include "Utilities.h"
-#include "UtilitiesRTL.h"
 #include "omptarget.h"
 
 #include "llvm/ADT/SmallString.h"
