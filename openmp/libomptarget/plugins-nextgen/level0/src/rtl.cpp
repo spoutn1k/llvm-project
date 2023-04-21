@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// RTL NextGen for AMDGPU machine
+// RTL NextGen for L0 machine
 //
 //===----------------------------------------------------------------------===//
 
@@ -39,21 +39,35 @@
 #include "llvm/Support/Program.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "ze_api.h"
+
 namespace llvm {
 namespace omp {
 namespace target {
 namespace plugin {
 
-/// Utility class representing generic resource references to AMDGPU resources.
+struct L0KernelTy;
+struct L0DeviceTy;
+struct L0PluginTy;
+struct L0StreamTy;
+struct L0EventTy;
+struct L0StreamManagerTy;
+struct L0EventManagerTy;
+struct L0DeviceImageTy;
+struct L0MemoryManagerTy;
+struct L0MemoryPoolTy;
+
+/*
+/// Utility class representing generic resource references to L0 resources.
 template <typename ResourceTy>
-struct AMDGPUResourceRef : public GenericDeviceResourceRef {
+struct L0ResourceRef : public GenericDeviceResourceRef {
   /// Create an empty reference to an invalid resource.
-  AMDGPUResourceRef() : Resource(nullptr) {}
+  L0ResourceRef() : Resource(nullptr) {}
 
   /// Create a reference to an existing resource.
-  AMDGPUResourceRef(ResourceTy *Resource) : Resource(Resource) {}
+  L0ResourceRef(ResourceTy *Resource) : Resource(Resource) {}
 
-  virtual ~AMDGPUResourceRef() {}
+  virtual ~L0ResourceRef() {}
 
   /// Create a new resource and save the reference. The reference must be empty
   /// before calling to this function.
@@ -65,7 +79,7 @@ struct AMDGPUResourceRef : public GenericDeviceResourceRef {
     // TODO
   }
 
-  /// Get the underlying AMDGPUSignalTy reference.
+  /// Get the underlying L0SignalTy reference.
   operator ResourceTy *() const { return Resource; }
 
 private:
@@ -73,26 +87,19 @@ private:
   ResourceTy *Resource;
 };
 
-/// Class implementing the AMDGPU device images' properties.
-struct AMDGPUDeviceImageTy : public DeviceImageTy {
-  /// Create the AMDGPU image with the id and the target image pointer.
-  AMDGPUDeviceImageTy(int32_t ImageId, const __tgt_device_image *TgtImage)
+/// Class implementing the L0 device images' properties.
+struct L0DeviceImageTy : public DeviceImageTy {
+  /// Create the L0 image with the id and the target image pointer.
+  L0DeviceImageTy(int32_t ImageId, const __tgt_device_image *TgtImage)
       : DeviceImageTy(ImageId, TgtImage) {}
 
   /// Prepare and load the executable corresponding to the image.
-  Error loadExecutable(const AMDGPUDeviceTy &Device);
+  Error loadExecutable(const L0DeviceTy &Device);
 
   /// Unload the executable.
   Error unloadExecutable() {
     // TODO
   }
-
-  /// Get the executable.
-  hsa_executable_t getExecutable() const { return Executable; }
-
-  /// Find an HSA device symbol by its name on the executable.
-  Expected<hsa_executable_symbol_t>
-  findDeviceSymbol(GenericDeviceTy &Device, StringRef SymbolName) const;
 
   /// Get additional info for kernel, e.g., register spill counts
   std::optional<utils::KernelMetaDataTy>
@@ -109,25 +116,25 @@ private:
   StringMap<utils::KernelMetaDataTy> KernelInfoMap;
 };
 
-/// Class implementing the AMDGPU kernel functionalities which derives from the
+/// Class implementing the L0 kernel functionalities which derives from the
 /// generic kernel class.
-struct AMDGPUKernelTy : public GenericKernelTy {
-  /// Create an AMDGPU kernel with a name and an execution mode.
-  AMDGPUKernelTy(const char *Name, OMPTgtExecModeFlags ExecutionMode)
+struct L0KernelTy : public GenericKernelTy {
+  /// Create an L0 kernel with a name and an execution mode.
+  L0KernelTy(const char *Name, OMPTgtExecModeFlags ExecutionMode)
       : GenericKernelTy(Name, ExecutionMode),
-        ImplicitArgsSize(sizeof(utils::AMDGPUImplicitArgsTy)) {}
+        ImplicitArgsSize(sizeof(utils::L0ImplicitArgsTy)) {}
 
-  /// Initialize the AMDGPU kernel.
+  /// Initialize the L0 kernel.
   Error initImpl(GenericDeviceTy &Device, DeviceImageTy &Image) override {
     // TODO
   }
 
-  /// Launch the AMDGPU kernel function.
+  /// Launch the L0 kernel function.
   Error launchImpl(GenericDeviceTy &GenericDevice, uint32_t NumThreads,
                    uint64_t NumBlocks, KernelArgsTy &KernelArgs, void *Args,
                    AsyncInfoWrapperTy &AsyncInfoWrapper) const override;
 
-  /// Print more elaborate kernel launch info for AMDGPU
+  /// Print more elaborate kernel launch info for L0
   Error printLaunchInfoDetails(GenericDeviceTy &GenericDevice,
                                KernelArgsTy &KernelArgs, uint32_t NumThreads,
                                uint64_t NumBlocks) const override;
@@ -193,25 +200,23 @@ struct AMDHostDeviceTy : public AMDGenericDeviceTy {
   }
 };
 
-/// Class implementing the AMDGPU device functionalities which derives from the
+/// Class implementing the L0 device functionalities which derives from the
 /// generic device class.
-struct AMDGPUDeviceTy : public GenericDeviceTy, AMDGenericDeviceTy {
-  // Create an AMDGPU device with a device id and default AMDGPU grid values.
-  AMDGPUDeviceTy(int32_t DeviceId, int32_t NumDevices,
-                 AMDHostDeviceTy &HostDevice, hsa_agent_t Agent)
+struct L0DeviceTy : public GenericDeviceTy, AMDGenericDeviceTy {
+  // Create an L0 device with a device id and default L0 grid values.
+  L0DeviceTy(int32_t DeviceId, int32_t NumDevices, AMDHostDeviceTy &HostDevice,
+             hsa_agent_t Agent)
       : GenericDeviceTy(DeviceId, NumDevices, {0}), AMDGenericDeviceTy(),
-        OMPX_NumQueues("LIBOMPTARGET_AMDGPU_NUM_HSA_QUEUES", 4),
-        OMPX_QueueSize("LIBOMPTARGET_AMDGPU_HSA_QUEUE_SIZE", 512),
-        OMPX_DefaultTeamsPerCU("LIBOMPTARGET_AMDGPU_TEAMS_PER_CU", 4),
-        OMPX_MaxAsyncCopyBytes("LIBOMPTARGET_AMDGPU_MAX_ASYNC_COPY_BYTES",
+        OMPX_NumQueues("LIBOMPTARGET_L0_NUM_HSA_QUEUES", 4),
+        OMPX_QueueSize("LIBOMPTARGET_L0_HSA_QUEUE_SIZE", 512),
+        OMPX_DefaultTeamsPerCU("LIBOMPTARGET_L0_TEAMS_PER_CU", 4),
+        OMPX_MaxAsyncCopyBytes("LIBOMPTARGET_L0_MAX_ASYNC_COPY_BYTES",
                                1 * 1024 * 1024), // 1MB
-        OMPX_InitialNumSignals("LIBOMPTARGET_AMDGPU_NUM_INITIAL_HSA_SIGNALS",
-                               64),
-        AMDGPUStreamManager(*this), AMDGPUEventManager(*this),
-        AMDGPUSignalManager(*this), Agent(Agent), HostDevice(HostDevice),
-        Queues() {}
+        OMPX_InitialNumSignals("LIBOMPTARGET_L0_NUM_INITIAL_HSA_SIGNALS", 64),
+        L0StreamManager(*this), L0EventManager(*this), L0SignalManager(*this),
+        Agent(Agent), HostDevice(HostDevice), Queues() {}
 
-  ~AMDGPUDeviceTy() {}
+  ~L0DeviceTy() {}
 
   /// Initialize the device, its resources and get its properties.
   Error initImpl(GenericPluginTy &Plugin) override {
@@ -231,7 +236,7 @@ struct AMDGPUDeviceTy : public GenericDeviceTy, AMDGenericDeviceTy {
   /// See GenericDeviceTy::getComputeUnitKind().
   std::string getComputeUnitKind() const override { return ComputeUnitKind; }
 
-  /// Allocate and construct an AMDGPU kernel.
+  /// Allocate and construct an L0 kernel.
   Expected<GenericKernelTy *>
   constructKernelEntry(const __tgt_offload_entry &KernelEntry,
                        DeviceImageTy &Image) override {
@@ -363,14 +368,14 @@ struct AMDGPUDeviceTy : public GenericDeviceTy, AMDGenericDeviceTy {
   hsa_agent_t getAgent() const override { return Agent; }
 
   /// Get the signal manager.
-  AMDGPUSignalManagerTy &getSignalManager() { return AMDGPUSignalManager; }
+  L0SignalManagerTy &getSignalManager() { return L0SignalManager; }
 
 private:
-  using AMDGPUStreamRef = AMDGPUResourceRef<AMDGPUStreamTy>;
-  using AMDGPUEventRef = AMDGPUResourceRef<AMDGPUEventTy>;
+  using L0StreamRef = L0ResourceRef<L0StreamTy>;
+  using L0EventRef = L0ResourceRef<L0EventTy>;
 
-  using AMDGPUStreamManagerTy = GenericDeviceResourceManagerTy<AMDGPUStreamRef>;
-  using AMDGPUEventManagerTy = GenericDeviceResourceManagerTy<AMDGPUEventRef>;
+  using L0StreamManagerTy = GenericDeviceResourceManagerTy<L0StreamRef>;
+  using L0EventManagerTy = GenericDeviceResourceManagerTy<L0EventRef>;
 
   /// Envar for controlling the number of HSA queues per device. High number of
   /// queues may degrade performance.
@@ -395,18 +400,18 @@ private:
 
   /// Envar controlling the initial number of HSA signals per device. There is
   /// one manager of signals per device managing several pre-allocated signals.
-  /// These signals are mainly used by AMDGPU streams. If needed, more signals
+  /// These signals are mainly used by L0 streams. If needed, more signals
   /// will be created.
   UInt32Envar OMPX_InitialNumSignals;
 
-  /// Stream manager for AMDGPU streams.
-  AMDGPUStreamManagerTy AMDGPUStreamManager;
+  /// Stream manager for L0 streams.
+  L0StreamManagerTy L0StreamManager;
 
-  /// Event manager for AMDGPU events.
-  AMDGPUEventManagerTy AMDGPUEventManager;
+  /// Event manager for L0 events.
+  L0EventManagerTy L0EventManager;
 
-  /// Signal manager for AMDGPU signals.
-  AMDGPUSignalManagerTy AMDGPUSignalManager;
+  /// Signal manager for L0 signals.
+  L0SignalManagerTy L0SignalManager;
 
   /// The agent handler corresponding to the device.
   hsa_agent_t Agent;
@@ -418,12 +423,12 @@ private:
   AMDHostDeviceTy &HostDevice;
 
   /// List of device packet queues.
-  std::vector<AMDGPUQueueTy> Queues;
+  std::vector<L0QueueTy> Queues;
 };
 
-/// Class implementing the AMDGPU-specific functionalities of the global
+/// Class implementing the L0-specific functionalities of the global
 /// handler.
-struct AMDGPUGlobalHandlerTy final : public GenericGlobalHandlerTy {
+struct L0GlobalHandlerTy final : public GenericGlobalHandlerTy {
   /// Get the metadata of a global from the device. The name and size of the
   /// global is read from DeviceGlobal and the address of the global is written
   /// to DeviceGlobal.
@@ -439,7 +444,7 @@ private:
                                  const ELF64LE::Sym &Symbol,
                                  const ELF64LE::Shdr &Section,
                                  GlobalTy &ImageGlobal) override {
-    // The global's address in AMDGPU is computed as the image begin + the ELF
+    // The global's address in L0 is computed as the image begin + the ELF
     // symbol value. Notice we do not add the ELF section offset.
     ImageGlobal.setPtr(advanceVoidPtr(Image.getStart(), Symbol.st_value));
 
@@ -450,37 +455,68 @@ private:
   }
 };
 
-/// Class implementing the AMDGPU-specific functionalities of the plugin.
-struct AMDGPUPluginTy final : public GenericPluginTy {
-  /// Create an AMDGPU plugin and initialize the AMDGPU driver.
-  AMDGPUPluginTy()
-      : GenericPluginTy(getTripleArch()), Initialized(false),
-        HostDevice(nullptr) {}
+*/
+
+/// Class implementing the Level Zero-specific functionalities of the plugin.
+struct L0PluginTy final : public GenericPluginTy {
+  /// Create an L0 plugin and initialize the L0 driver.
+  L0PluginTy() : GenericPluginTy(getTripleArch()) {}
 
   /// This class should not be copied.
-  AMDGPUPluginTy(const AMDGPUPluginTy &) = delete;
-  AMDGPUPluginTy(AMDGPUPluginTy &&) = delete;
+  L0PluginTy(const L0PluginTy &) = delete;
+  L0PluginTy(L0PluginTy &&) = delete;
 
   /// Initialize the plugin and return the number of devices.
   Expected<int32_t> initImpl() override {
-    // TODO
+    ze_result_t Status;
+    uint32_t driverCount = 0, totalDeviceCount = 0;
+    Status = zeInit(ZE_INIT_FLAG_GPU_ONLY);
+    if (Status != ZE_RESULT_SUCCESS) {
+      DP("Failed to initialize the Level Zero library\n");
+      return 0;
+    }
+
+    Status = zeDriverGet(&driverCount, NULL);
+    if (Status != ZE_RESULT_SUCCESS) {
+      DP("Failed to query the Level Zero driver count\n");
+      return 0;
+    }
+
+    ze_driver_handle_t *phDrivers =
+        (ze_driver_handle_t *)malloc(driverCount * sizeof(ze_driver_handle_t));
+    errno = zeDriverGet(&driverCount, phDrivers);
+    if (Status != ZE_RESULT_SUCCESS) {
+      DP("Failed to query the Level Zero drivers\n");
+      return 0;
+    }
+
+    for (uint32_t driver_idx = 0; driver_idx < driverCount; driver_idx++) {
+      ze_driver_handle_t driver = phDrivers[driver_idx];
+
+      // if count is zero, then the driver will update the value with the total
+      // number of devices available.
+      uint32_t deviceCount = 0;
+      errno = zeDeviceGet(driver, &deviceCount, NULL);
+      if (Status != ZE_RESULT_SUCCESS) {
+        DP("Failed to query the Level Zero device count from driver\n");
+        return 0;
+      }
+
+      totalDeviceCount = totalDeviceCount + deviceCount;
+    }
+
+    return totalDeviceCount;
   }
 
   /// Deinitialize the plugin.
-  Error deinitImpl() override {
-    // TODO
-  }
+  Error deinitImpl() override { return Plugin::success(); }
 
-  Triple::ArchType getTripleArch() const override {
-    // TODO
-  }
+  Triple::ArchType getTripleArch() const override { return Triple::spir64; }
 
   /// Get the ELF code for recognizing the compatible image binary.
-  uint16_t getMagicElfBits() const override {
-    // TODO
-  }
+  uint16_t getMagicElfBits() const override { return 0; }
 
-  /// Check whether the image is compatible with an AMDGPU device.
+  /// Check whether the image is compatible with a L0 device.
   Expected<bool> isImageCompatible(__tgt_image_info *Info) const override {
     // TODO
   }
@@ -489,41 +525,11 @@ struct AMDGPUPluginTy final : public GenericPluginTy {
   bool isDataExchangable(int32_t SrcDeviceId, int32_t DstDeviceId) override {
     return false;
   }
-
-  /// Get the host device instance.
-  AMDHostDeviceTy &getHostDevice() {
-    assert(HostDevice && "Host device not initialized");
-    return *HostDevice;
-  }
-
-  /// Get the kernel agent with the corresponding agent id.
-  hsa_agent_t getKernelAgent(int32_t AgentId) const {
-    assert((uint32_t)AgentId < KernelAgents.size() && "Invalid agent id");
-    return KernelAgents[AgentId];
-  }
-
-  /// Get the list of the available kernel agents.
-  const llvm::SmallVector<hsa_agent_t> &getKernelAgents() const {
-    return KernelAgents;
-  }
 };
 
-Error AMDGPUKernelTy::launchImpl(GenericDeviceTy &GenericDevice,
-                                 uint32_t NumThreads, uint64_t NumBlocks,
-                                 KernelArgsTy &KernelArgs, void *Args,
-                                 AsyncInfoWrapperTy &AsyncInfoWrapper) const {
-  // TODO
-}
+GenericPluginTy *Plugin::createPlugin() { return new L0PluginTy(); }
 
-Error AMDGPUKernelTy::printLaunchInfoDetails(GenericDeviceTy &GenericDevice,
-                                             KernelArgsTy &KernelArgs,
-                                             uint32_t NumThreads,
-                                             uint64_t NumBlocks) const {
-  // TODO
-}
-
-GenericPluginTy *Plugin::createPlugin() { // TODO
-}
+/*
 
 GenericDeviceTy *Plugin::createDevice(int32_t DeviceId, int32_t NumDevices) {
   // TODO
@@ -538,10 +544,7 @@ Error Plugin::check(int32_t Code, const char *ErrFmt, ArgsTy... Args) {
   // TODO
 }
 
-void *AMDGPUMemoryManagerTy::allocate(size_t Size, void *HstPtr,
-                                      TargetAllocTy Kind) {}
-
-void *AMDGPUDeviceTy::allocate(size_t Size, void *, TargetAllocTy Kind) {}
+*/
 
 } // namespace plugin
 } // namespace target
