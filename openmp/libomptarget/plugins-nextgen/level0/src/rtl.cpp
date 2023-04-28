@@ -199,34 +199,40 @@ struct AMDHostDeviceTy : public AMDGenericDeviceTy {
     // TODO
   }
 };
+*/
 
-/// Class implementing the L0 device functionalities which derives from the
-/// generic device class.
-struct L0DeviceTy : public GenericDeviceTy, AMDGenericDeviceTy {
+/// Class implementing the L0 device functionalities
+struct L0DeviceTy : public GenericDeviceTy {
   // Create an L0 device with a device id and default L0 grid values.
-  L0DeviceTy(int32_t DeviceId, int32_t NumDevices, AMDHostDeviceTy &HostDevice,
-             hsa_agent_t Agent)
-      : GenericDeviceTy(DeviceId, NumDevices, {0}), AMDGenericDeviceTy(),
-        OMPX_NumQueues("LIBOMPTARGET_L0_NUM_HSA_QUEUES", 4),
-        OMPX_QueueSize("LIBOMPTARGET_L0_HSA_QUEUE_SIZE", 512),
-        OMPX_DefaultTeamsPerCU("LIBOMPTARGET_L0_TEAMS_PER_CU", 4),
-        OMPX_MaxAsyncCopyBytes("LIBOMPTARGET_L0_MAX_ASYNC_COPY_BYTES",
-                               1 * 1024 * 1024), // 1MB
-        OMPX_InitialNumSignals("LIBOMPTARGET_L0_NUM_INITIAL_HSA_SIGNALS", 64),
-        L0StreamManager(*this), L0EventManager(*this), L0SignalManager(*this),
-        Agent(Agent), HostDevice(HostDevice), Queues() {}
+  L0DeviceTy(int32_t DeviceId, int32_t NumDevices)
+      : GenericDeviceTy(DeviceId, NumDevices, SPIR64GridValues64) {}
 
   ~L0DeviceTy() {}
 
   /// Initialize the device, its resources and get its properties.
   Error initImpl(GenericPluginTy &Plugin) override {
-    // TODO
+    auto deviceId = getDeviceId();
+    if (deviceId > Plugin.devices.size()) {
+      return Plugin::error("Invalid device ID %d", deviceId);
+    }
+
+    deviceHandle = Plugin.devices[deviceId];
+
+    ze_device_properties_t device_properties{};
+    device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+    Status = zeDeviceGetProperties(device, &device_properties);
+    if (Status != ZE_RESULT_SUCCESS) {
+      return Plugin::Error(
+          "Failed to query the Level Zero device properties\n");
+    }
+
+    ComputeUnitKind = device_properties.name;
+
+    return Plugin::success();
   }
 
   /// Deinitialize the device and release its resources.
-  Error deinitImpl() override {
-    // TODO
-  }
+  Error deinitImpl() override {}
 
   Expected<std::unique_ptr<MemoryBuffer>>
   doJITPostProcessing(std::unique_ptr<MemoryBuffer> MB) const override {
@@ -351,21 +357,10 @@ struct L0DeviceTy : public GenericDeviceTy, AMDGenericDeviceTy {
   }
 
   /// Getters and setters for stack and heap sizes.
-  Error getDeviceStackSize(uint64_t &Value) override {
-    // TODO
-  }
-  Error setDeviceStackSize(uint64_t Value) override {
-    // TODO
-  }
-  Error getDeviceHeapSize(uint64_t &Value) override {
-    // TODO
-  }
-  Error setDeviceHeapSize(uint64_t Value) override {
-    // TODO
-  }
-
-  /// Get the device agent.
-  hsa_agent_t getAgent() const override { return Agent; }
+  Error getDeviceStackSize(uint64_t &Value) override { return 0; }
+  Error setDeviceStackSize(uint64_t Value) override {}
+  Error getDeviceHeapSize(uint64_t &Value) override { return 0; }
+  Error setDeviceHeapSize(uint64_t Value) override {}
 
   /// Get the signal manager.
   L0SignalManagerTy &getSignalManager() { return L0SignalManager; }
@@ -373,36 +368,11 @@ struct L0DeviceTy : public GenericDeviceTy, AMDGenericDeviceTy {
 private:
   using L0StreamRef = L0ResourceRef<L0StreamTy>;
   using L0EventRef = L0ResourceRef<L0EventTy>;
-
   using L0StreamManagerTy = GenericDeviceResourceManagerTy<L0StreamRef>;
   using L0EventManagerTy = GenericDeviceResourceManagerTy<L0EventRef>;
 
-  /// Envar for controlling the number of HSA queues per device. High number of
-  /// queues may degrade performance.
-  UInt32Envar OMPX_NumQueues;
-
-  /// Envar for controlling the size of each HSA queue. The size is the number
-  /// of HSA packets a queue is expected to hold. It is also the number of HSA
-  /// packets that can be pushed into each queue without waiting the driver to
-  /// process them.
-  UInt32Envar OMPX_QueueSize;
-
-  /// Envar for controlling the default number of teams relative to the number
-  /// of compute units (CUs) the device has:
-  ///   #default_teams = OMPX_DefaultTeamsPerCU * #CUs.
-  UInt32Envar OMPX_DefaultTeamsPerCU;
-
-  /// Envar specifying the maximum size in bytes where the memory copies are
-  /// asynchronous operations. Up to this transfer size, the memory copies are
-  /// asychronous operations pushed to the corresponding stream. For larger
-  /// transfers, they are synchronous transfers.
-  UInt32Envar OMPX_MaxAsyncCopyBytes;
-
-  /// Envar controlling the initial number of HSA signals per device. There is
-  /// one manager of signals per device managing several pre-allocated signals.
-  /// These signals are mainly used by L0 streams. If needed, more signals
-  /// will be created.
-  UInt32Envar OMPX_InitialNumSignals;
+  /// Handle towards the device
+  ze_device_handle_t deviceHandle;
 
   /// Stream manager for L0 streams.
   L0StreamManagerTy L0StreamManager;
@@ -413,19 +383,14 @@ private:
   /// Signal manager for L0 signals.
   L0SignalManagerTy L0SignalManager;
 
-  /// The agent handler corresponding to the device.
-  hsa_agent_t Agent;
-
   /// The GPU architecture.
   std::string ComputeUnitKind;
-
-  /// Reference to the host device.
-  AMDHostDeviceTy &HostDevice;
 
   /// List of device packet queues.
   std::vector<L0QueueTy> Queues;
 };
 
+/*
 /// Class implementing the L0-specific functionalities of the global
 /// handler.
 struct L0GlobalHandlerTy final : public GenericGlobalHandlerTy {
@@ -523,7 +488,7 @@ struct L0PluginTy final : public GenericPluginTy {
         }
 
         if (device_properties.type == ZE_DEVICE_TYPE_GPU) {
-          devices.emplace_back(device);
+          devices.push_back(device);
         }
       }
 
