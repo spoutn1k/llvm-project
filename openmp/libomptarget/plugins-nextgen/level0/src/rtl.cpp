@@ -482,34 +482,64 @@ struct L0PluginTy final : public GenericPluginTy {
       return 0;
     }
 
-    ze_driver_handle_t *phDrivers =
+    driverHandles =
         (ze_driver_handle_t *)malloc(driverCount * sizeof(ze_driver_handle_t));
-    errno = zeDriverGet(&driverCount, phDrivers);
+    Status = zeDriverGet(&driverCount, driverHandles);
     if (Status != ZE_RESULT_SUCCESS) {
       DP("Failed to query the Level Zero drivers\n");
       return 0;
     }
 
     for (uint32_t driver_idx = 0; driver_idx < driverCount; driver_idx++) {
-      ze_driver_handle_t driver = phDrivers[driver_idx];
+      ze_driver_handle_t driver = driverHandles[driver_idx];
 
       // if count is zero, then the driver will update the value with the total
       // number of devices available.
       uint32_t deviceCount = 0;
-      errno = zeDeviceGet(driver, &deviceCount, NULL);
+      Status = zeDeviceGet(driver, &deviceCount, NULL);
       if (Status != ZE_RESULT_SUCCESS) {
         DP("Failed to query the Level Zero device count from driver\n");
         return 0;
       }
 
-      totalDeviceCount = totalDeviceCount + deviceCount;
+      ze_device_handle_t *deviceHandles = (ze_device_handle_t *)malloc(
+          deviceCount * sizeof(ze_device_handle_t));
+
+      Status = zeDeviceGet(driver, &deviceCount, deviceHandles);
+      if (Status != ZE_RESULT_SUCCESS) {
+        DP("Failed to query the Level Zero devices from driver\n");
+        return 0;
+      }
+
+      for (uint32_t device_idx = 0; device_idx < deviceCount; device_idx++) {
+        ze_device_handle_t device = deviceHandles[device_idx];
+
+        ze_device_properties_t device_properties{};
+        device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+        Status = zeDeviceGetProperties(device, &device_properties);
+        if (Status != ZE_RESULT_SUCCESS) {
+          DP("Failed to query the Level Zero device properties\n");
+          return 0;
+        }
+
+        if (device_properties.type == ZE_DEVICE_TYPE_GPU) {
+          devices.emplace_back(device);
+        }
+      }
+
+      free(deviceHandles);
     }
 
-    return totalDeviceCount;
+    return static_cast<int32_t>(devices.size());
   }
 
   /// Deinitialize the plugin.
-  Error deinitImpl() override { return Plugin::success(); }
+  Error deinitImpl() override {
+    if (driverHandles)
+      free(driverHandles);
+
+    return Plugin::success();
+  }
 
   Triple::ArchType getTripleArch() const override { return Triple::spir64; }
 
@@ -518,13 +548,18 @@ struct L0PluginTy final : public GenericPluginTy {
 
   /// Check whether the image is compatible with a L0 device.
   Expected<bool> isImageCompatible(__tgt_image_info *Info) const override {
-    // TODO
+    // TODO Figure out what can be in Info->Arch
+    return true;
   }
 
-  /// This plugin does not support exchanging data between two devices.
+  /// TODO does this plugin does support exchanging data between two devices ?
   bool isDataExchangable(int32_t SrcDeviceId, int32_t DstDeviceId) override {
     return false;
   }
+
+private:
+  ze_driver_handle_t *driverHandles;
+  llvm::SmallVector<ze_device_handle_t> devices;
 };
 
 GenericPluginTy *Plugin::createPlugin() { return new L0PluginTy(); }
