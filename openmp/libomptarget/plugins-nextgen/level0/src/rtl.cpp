@@ -53,12 +53,9 @@ struct L0StreamTy;
 struct L0EventTy;
 struct L0StreamManagerTy;
 struct L0EventManagerTy;
-struct L0DeviceImageTy;
 struct L0MemoryManagerTy;
 struct L0MemoryPoolTy;
 
-/*
-/// Utility class representing generic resource references to L0 resources.
 template <typename ResourceTy>
 struct L0ResourceRef : public GenericDeviceResourceRef {
   /// Create an empty reference to an invalid resource.
@@ -87,57 +84,31 @@ private:
   ResourceTy *Resource;
 };
 
-/// Class implementing the L0 device images' properties.
-struct L0DeviceImageTy : public DeviceImageTy {
-  /// Create the L0 image with the id and the target image pointer.
-  L0DeviceImageTy(int32_t ImageId, const __tgt_device_image *TgtImage)
-      : DeviceImageTy(ImageId, TgtImage) {}
-
-  /// Prepare and load the executable corresponding to the image.
-  Error loadExecutable(const L0DeviceTy &Device);
-
-  /// Unload the executable.
-  Error unloadExecutable() {
-    // TODO
-  }
-
-  /// Get additional info for kernel, e.g., register spill counts
-  std::optional<utils::KernelMetaDataTy>
-  getKernelInfo(StringRef Identifier) const {
-    auto It = KernelInfoMap.find(Identifier);
-
-    if (It == KernelInfoMap.end())
-      return {};
-
-    return It->second;
-  }
-
-private:
-  StringMap<utils::KernelMetaDataTy> KernelInfoMap;
-};
-
 /// Class implementing the L0 kernel functionalities which derives from the
 /// generic kernel class.
 struct L0KernelTy : public GenericKernelTy {
   /// Create an L0 kernel with a name and an execution mode.
   L0KernelTy(const char *Name, OMPTgtExecModeFlags ExecutionMode)
-      : GenericKernelTy(Name, ExecutionMode),
-        ImplicitArgsSize(sizeof(utils::L0ImplicitArgsTy)) {}
+      : GenericKernelTy(Name, ExecutionMode) {}
 
   /// Initialize the L0 kernel.
   Error initImpl(GenericDeviceTy &Device, DeviceImageTy &Image) override {
-    // TODO
+    assert(0);
   }
 
   /// Launch the L0 kernel function.
   Error launchImpl(GenericDeviceTy &GenericDevice, uint32_t NumThreads,
                    uint64_t NumBlocks, KernelArgsTy &KernelArgs, void *Args,
-                   AsyncInfoWrapperTy &AsyncInfoWrapper) const override;
+                   AsyncInfoWrapperTy &AsyncInfoWrapper) const override {
+    assert(0);
+  }
 
   /// Print more elaborate kernel launch info for L0
   Error printLaunchInfoDetails(GenericDeviceTy &GenericDevice,
                                KernelArgsTy &KernelArgs, uint32_t NumThreads,
-                               uint64_t NumBlocks) const override;
+                               uint64_t NumBlocks) const override {
+    assert(0);
+  }
 
   /// The default number of blocks is common to the whole device.
   uint32_t getDefaultNumBlocks(GenericDeviceTy &GenericDevice) const override {
@@ -166,77 +137,71 @@ private:
   uint32_t PrivateSize;
 
   /// The size of implicit kernel arguments.
-  const uint32_t ImplicitArgsSize;
+  // const uint32_t ImplicitArgsSize;
 
   /// Additional Info for the AMD GPU Kernel
-  std::optional<utils::KernelMetaDataTy> KernelInfo;
+  // std::optional<utils::KernelMetaDataTy> KernelInfo;
+};
+
+struct L0SignalTy {
+  /// Create an empty signal.
+  L0SignalTy() : UseCount() {}
+  L0SignalTy(L0DeviceTy &Device) : UseCount() {}
+
+private:
+  /// The underlying HSA signal.
+  // hsa_signal_t Signal;
+
+  /// Reference counter for tracking the concurrent use count. This is mainly
+  /// used for knowing how many streams are using the signal.
+  RefCountTy<> UseCount;
+};
+
+/// Classes for holding L0 signals and managing signals.
+using L0SignalRef = L0ResourceRef<L0SignalTy>;
+using L0SignalManagerTy = GenericDeviceResourceManagerTy<L0SignalRef>;
+
+struct L0QueueTy {
+  L0QueueTy() {}
 };
 
 /// Abstract class that holds the common members of the actual kernel devices
 /// and the host device. Both types should inherit from this class.
-struct AMDGenericDeviceTy {
-  AMDGenericDeviceTy() {}
+struct L0GenericDeviceTy {
+  L0GenericDeviceTy() {}
 
-  virtual ~AMDGenericDeviceTy() {}
+  virtual ~L0GenericDeviceTy() {}
 };
 
 /// Class representing the host device. This host device may have more than one
 /// HSA host agent. We aggregate all its resources into the same instance.
-struct AMDHostDeviceTy : public AMDGenericDeviceTy {
+struct L0HostDeviceTy : public L0GenericDeviceTy {
   /// Create a host device from an array of host agents.
-  AMDHostDeviceTy(const llvm::SmallVector<hsa_agent_t> &HostAgents)
-      : AMDGenericDeviceTy(), Agents(HostAgents), ArgsMemoryManager(),
-        PinnedMemoryManager() {}
-
-  /// Initialize the host device memory pools and the memory managers for
-  /// kernel args and host pinned memory allocations.
-  Error init() {
-    // TODO
-  }
-
-  /// Deinitialize memory pools and managers.
-  Error deinit() {
-    // TODO
-  }
+  L0HostDeviceTy() : L0GenericDeviceTy() {}
 };
-*/
 
 /// Class implementing the L0 device functionalities
 struct L0DeviceTy : public GenericDeviceTy {
   // Create an L0 device with a device id and default L0 grid values.
   L0DeviceTy(int32_t DeviceId, int32_t NumDevices)
-      : GenericDeviceTy(DeviceId, NumDevices, SPIR64GridValues64) {}
+      : GenericDeviceTy(DeviceId, NumDevices, SPIR64GridValues64),
+        L0StreamManager(*this), L0EventManager(*this), L0SignalManager(*this) {}
 
   ~L0DeviceTy() {}
 
   /// Initialize the device, its resources and get its properties.
   Error initImpl(GenericPluginTy &Plugin) override {
     auto deviceId = getDeviceId();
-    if (deviceId > Plugin.devices.size()) {
-      return Plugin::error("Invalid device ID %d", deviceId);
-    }
-
-    deviceHandle = Plugin.devices[deviceId];
-
-    ze_device_properties_t device_properties{};
-    device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
-    Status = zeDeviceGetProperties(device, &device_properties);
-    if (Status != ZE_RESULT_SUCCESS) {
-      return Plugin::Error(
-          "Failed to query the Level Zero device properties\n");
-    }
-
-    ComputeUnitKind = device_properties.name;
 
     return Plugin::success();
   }
 
   /// Deinitialize the device and release its resources.
-  Error deinitImpl() override {}
+  Error deinitImpl() override { assert(0); }
 
   Expected<std::unique_ptr<MemoryBuffer>>
   doJITPostProcessing(std::unique_ptr<MemoryBuffer> MB) const override {
-    // TODO
+    assert(0);
   }
 
   /// See GenericDeviceTy::getComputeUnitKind().
@@ -246,121 +211,113 @@ struct L0DeviceTy : public GenericDeviceTy {
   Expected<GenericKernelTy *>
   constructKernelEntry(const __tgt_offload_entry &KernelEntry,
                        DeviceImageTy &Image) override {
-    // TODO
+    assert(0);
   }
 
-  Error setContext() override { // TODO
-  }
+  Error setContext() override { assert(0); }
 
   /// Load the binary image into the device and allocate an image object.
   Expected<DeviceImageTy *> loadBinaryImpl(const __tgt_device_image *TgtImage,
                                            int32_t ImageId) override {
-    // TODO
+    assert(0);
   }
 
   /// Allocate memory on the device or related to the device.
-  void *allocate(size_t Size, void *, TargetAllocTy Kind) override;
+  void *allocate(size_t Size, void *, TargetAllocTy Kind) override {
+    assert(0);
+  }
 
   /// Deallocate memory on the device or related to the device.
-  int free(void *TgtPtr, TargetAllocTy Kind) override {
-    // TODO
-  }
+  int free(void *TgtPtr, TargetAllocTy Kind) override { assert(0); }
 
   /// Synchronize current thread with the pending operations on the async info.
-  Error synchronizeImpl(__tgt_async_info &AsyncInfo) override {
-    // TODO
-  }
+  Error synchronizeImpl(__tgt_async_info &AsyncInfo) override { assert(0); }
 
   /// Query for the completion of the pending operations on the async info.
-  Error queryAsyncImpl(__tgt_async_info &AsyncInfo) override {
-    // TODO
-  }
+  Error queryAsyncImpl(__tgt_async_info &AsyncInfo) override { assert(0); }
 
   /// Pin the host buffer and return the device pointer that should be used for
   /// device transfers.
   Expected<void *> dataLockImpl(void *HstPtr, int64_t Size) override {
-    // TODO
+    assert(0);
   }
 
   /// Unpin the host buffer.
-  Error dataUnlockImpl(void *HstPtr) override {
-    // TODO
-  }
+  Error dataUnlockImpl(void *HstPtr) override { assert(0); }
 
   /// Check through the HSA runtime whether the \p HstPtr buffer is pinned.
   Expected<bool> isPinnedPtrImpl(void *HstPtr, void *&BaseHstPtr,
                                  void *&BaseDevAccessiblePtr,
                                  size_t &BaseSize) const override {
-    // TODO
+    assert(0);
   }
 
   /// Submit data to the device (host to device transfer).
   Error dataSubmitImpl(void *TgtPtr, const void *HstPtr, int64_t Size,
                        AsyncInfoWrapperTy &AsyncInfoWrapper) override {
-    // TODO
+    assert(0);
   }
 
   /// Retrieve data from the device (device to host transfer).
   Error dataRetrieveImpl(void *HstPtr, const void *TgtPtr, int64_t Size,
                          AsyncInfoWrapperTy &AsyncInfoWrapper) override {
-    // TODO
+    assert(0);
   }
 
   /// Exchange data between two devices within the plugin.
   Error dataExchangeImpl(const void *SrcPtr, GenericDeviceTy &DstGenericDevice,
                          void *DstPtr, int64_t Size,
                          AsyncInfoWrapperTy &AsyncInfoWrapper) override {
-    // TODO
+    assert(0);
   }
 
   /// Initialize the async info for interoperability purposes.
   Error initAsyncInfoImpl(AsyncInfoWrapperTy &AsyncInfoWrapper) override {
-    // TODO
+    assert(0);
   }
 
   /// Initialize the device info for interoperability purposes.
   Error initDeviceInfoImpl(__tgt_device_info *DeviceInfo) override {
-    // TODO
+    assert(0);
   }
 
   /// Create an event.
-  Error createEventImpl(void **EventPtrStorage) override {
-    // TODO
-  }
+  Error createEventImpl(void **EventPtrStorage) override { assert(0); }
 
   /// Destroy a previously created event.
-  Error destroyEventImpl(void *EventPtr) override {
-    // TODO
-  }
+  Error destroyEventImpl(void *EventPtr) override { assert(0); }
 
   /// Record the event.
   Error recordEventImpl(void *EventPtr,
                         AsyncInfoWrapperTy &AsyncInfoWrapper) override {
-    // TODO
+    assert(0);
   }
 
   /// Make the stream wait on the event.
   Error waitEventImpl(void *EventPtr,
                       AsyncInfoWrapperTy &AsyncInfoWrapper) override {
-    // TODO
+    assert(0);
   }
 
   /// Synchronize the current thread with the event.
-  Error syncEventImpl(void *EventPtr) override {
-    // TODO
-  }
+  Error syncEventImpl(void *EventPtr) override { assert(0); }
 
   /// Print information about the device.
-  Error printInfoImpl() override {
-    // TODO: Implement the basic info.
-    return Plugin::success();
-  }
+  Error printInfoImpl() override { return Plugin::success(); }
 
   /// Getters and setters for stack and heap sizes.
-  Error getDeviceStackSize(uint64_t &Value) override { return 0; }
-  Error setDeviceStackSize(uint64_t Value) override {}
-  Error getDeviceHeapSize(uint64_t &Value) override { return 0; }
-  Error setDeviceHeapSize(uint64_t Value) override {}
+  Error getDeviceStackSize(uint64_t &Value) override {
+    Value = 0;
+    return Plugin::success();
+  }
+  Error setDeviceStackSize(uint64_t Value) override {
+    return Plugin::success();
+  }
+  Error getDeviceHeapSize(uint64_t &Value) override {
+    Value = 0;
+    return Plugin::success();
+  }
+  Error setDeviceHeapSize(uint64_t Value) override { return Plugin::success(); }
 
   /// Get the signal manager.
   L0SignalManagerTy &getSignalManager() { return L0SignalManager; }
@@ -390,7 +347,6 @@ private:
   std::vector<L0QueueTy> Queues;
 };
 
-/*
 /// Class implementing the L0-specific functionalities of the global
 /// handler.
 struct L0GlobalHandlerTy final : public GenericGlobalHandlerTy {
@@ -400,7 +356,7 @@ struct L0GlobalHandlerTy final : public GenericGlobalHandlerTy {
   Error getGlobalMetadataFromDevice(GenericDeviceTy &Device,
                                     DeviceImageTy &Image,
                                     GlobalTy &DeviceGlobal) override {
-    // TODO
+    assert(0);
   }
 
 private:
@@ -419,8 +375,6 @@ private:
     return Plugin::success();
   }
 };
-
-*/
 
 /// Class implementing the Level Zero-specific functionalities of the plugin.
 struct L0PluginTy final : public GenericPluginTy {
@@ -529,8 +483,6 @@ private:
 
 GenericPluginTy *Plugin::createPlugin() { return new L0PluginTy(); }
 
-/*
-
 GenericDeviceTy *Plugin::createDevice(int32_t DeviceId, int32_t NumDevices) {
   // TODO
 }
@@ -543,8 +495,6 @@ template <typename... ArgsTy>
 Error Plugin::check(int32_t Code, const char *ErrFmt, ArgsTy... Args) {
   // TODO
 }
-
-*/
 
 } // namespace plugin
 } // namespace target
