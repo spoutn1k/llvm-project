@@ -356,6 +356,8 @@ struct L0GlobalHandlerTy final : public GenericGlobalHandlerTy {
   Error getGlobalMetadataFromDevice(GenericDeviceTy &Device,
                                     DeviceImageTy &Image,
                                     GlobalTy &DeviceGlobal) override {
+    //-- PhuongNg --
+    // L0DeviceImageTy & L0Image = static_cast<L0DeviceImageTy &>(Image);
     assert(0);
   }
 
