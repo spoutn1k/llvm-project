@@ -126,3 +126,8 @@ install(TARGETS omptarget.rtl.level0.nextgen LIBRARY DESTINATION "${OPENMP_INSTA
 set_target_properties(omptarget.rtl.level0.nextgen PROPERTIES
   INSTALL_RPATH "$ORIGIN" BUILD_RPATH "$ORIGIN:${CMAKE_CURRENT_BINARY_DIR}/.."
   CXX_VISIBILITY_PRESET protected)
+
+# Report to the parent scope that we are building a plugin for level0
+set(LIBOMPTARGET_SYSTEM_TARGETS "${LIBOMPTARGET_SYSTEM_TARGETS} spir64-unknown-unknown" PARENT_SCOPE)
+list(APPEND LIBOMPTARGET_TESTED_PLUGINS "omptarget.rtl.level0.nextgen")
+set(LIBOMPTARGET_TESTED_PLUGINS "${LIBOMPTARGET_TESTED_PLUGINS}" PARENT_SCOPE)
